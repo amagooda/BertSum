@@ -13,9 +13,9 @@ import torch
 from multiprocess import Pool
 from pytorch_pretrained_bert import BertTokenizer
 
-from others.logging import logger
-from others.utils import clean
-from prepro.utils import _get_word_ngrams
+from ..others.logging import logger
+from ..others.utils import clean
+from .utils import _get_word_ngrams
 
 
 def load_json(p, lower):
@@ -208,6 +208,7 @@ def format_to_bert(args):
             real_name = json_f.split('/')[-1]
             a_lst.append((json_f, args, pjoin(args.save_path, real_name.replace('json', 'bert.pt'))))
         print(a_lst)
+
         pool = Pool(args.n_cpus)
         for d in pool.imap(_format_to_bert, a_lst):
             pass
@@ -216,33 +217,54 @@ def format_to_bert(args):
         pool.join()
 
 
-def tokenize(args):
+def tokenize(args) -> bool:
+    """Tokenize
+    Requires the following:
+        args.raw_path 
+        args.save_path
+        args.java_path - Where the Stanford NLP package is installed.
+    """
     stories_dir = os.path.abspath(args.raw_path)
     tokenized_stories_dir = os.path.abspath(args.save_path)
+    class_path = os.path.abspath(os.path.join(args.java_path, '*'))
 
     print("Preparing to tokenize %s to %s..." % (stories_dir, tokenized_stories_dir))
-    stories = os.listdir(stories_dir)
+    print(f"Class path: {class_path}")
+    stories_dir_files = [stories_dir_file for stories_dir_file in os.listdir(stories_dir) if stories_dir_file.endswith('story')]
     # make IO list file
     print("Making list of files to tokenize...")
-    with open("mapping_for_corenlp.txt", "w") as f:
-        for s in stories:
-            if (not s.endswith('story')):
-                continue
-            f.write("%s\n" % (os.path.join(stories_dir, s)))
-    command = ['java', 'edu.stanford.nlp.pipeline.StanfordCoreNLP' ,'-annotators', 'tokenize,ssplit', '-ssplit.newlineIsSentenceBreak', 'always', '-filelist', 'mapping_for_corenlp.txt', '-outputFormat', 'json', '-outputDirectory', tokenized_stories_dir]
-    print("Tokenizing %i files in %s and saving in %s..." % (len(stories), stories_dir, tokenized_stories_dir))
+    with open("mapping_for_corenlp.txt", "w") as mapping:
+        for stories_dir_file in stories_dir_files:
+            mapping.write("%s\n" % (os.path.join(stories_dir, stories_dir_file)))
+
+    command = ['java',
+        '-cp',
+        class_path,
+        'edu.stanford.nlp.pipeline.StanfordCoreNLP',
+        '-annotators',
+        'tokenize,ssplit',
+        '-ssplit.newlineIsSentenceBreak',
+        'always',
+        '-filelist',
+        'mapping_for_corenlp.txt',
+        '-outputFormat',
+        'json',
+        '-outputDirectory',
+        tokenized_stories_dir]
+    print("Tokenizing %i files in %s and saving in %s..." % (len(stories_dir_files), stories_dir, tokenized_stories_dir))
     subprocess.call(command)
     print("Stanford CoreNLP Tokenizer has finished.")
     os.remove("mapping_for_corenlp.txt")
 
     # Check that the tokenized stories directory contains the same number of files as the original directory
-    num_orig = len(os.listdir(stories_dir))
+    num_orig = len(stories_dir_files)
     num_tokenized = len(os.listdir(tokenized_stories_dir))
     if num_orig != num_tokenized:
         raise Exception(
             "The tokenized stories directory %s contains %i files, but it should contain the same number as %s (which has %i files). Was there an error during tokenization?" % (
             tokenized_stories_dir, num_tokenized, stories_dir, num_orig))
     print("Successfully finished tokenizing %s to %s.\n" % (stories_dir, tokenized_stories_dir))
+    return True
 
 
 def _format_to_bert(params):

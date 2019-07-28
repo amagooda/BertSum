@@ -13,13 +13,13 @@ import time
 
 import torch
 from pytorch_pretrained_bert import BertConfig
-
+from argparse import ArgumentParser
 import distributed
-from models import data_loader, model_builder
-from models.data_loader import load_dataset
-from models.model_builder import Summarizer
-from models.trainer import build_trainer
-from others.logging import logger, init_logger
+from .models import data_loader, model_builder
+from .models.data_loader import load_dataset
+from .models.model_builder import Summarizer
+from .models.trainer import build_trainer
+from .others.logging import logger, init_logger
 
 model_flags = ['hidden_size', 'ff_size', 'heads', 'inter_layers','encoder','ff_actv', 'use_interval','rnn_size']
 
@@ -197,6 +197,7 @@ def test(args, device_id, pt, step):
     else:
         test_from = args.test_from
     logger.info('Loading checkpoint from %s' % test_from)
+    print('Loading checkpoint from %s' % test_from)
     checkpoint = torch.load(test_from, map_location=lambda storage, loc: storage)
     opt = vars(checkpoint['opt'])
     for k in opt.keys():
@@ -271,13 +272,8 @@ def train(args, device_id):
     trainer = build_trainer(args, device_id, model, optim)
     trainer.train(train_iter_fct, args.train_steps)
 
-
-
-if __name__ == '__main__':
+def get_arg_parser() -> ArgumentParser:
     parser = argparse.ArgumentParser()
-
-
-
     parser.add_argument("-encoder", default='classifier', type=str, choices=['classifier','transformer','rnn','baseline'])
     parser.add_argument("-mode", default='train', type=str, choices=['train','validate','test'])
     parser.add_argument("-bert_data_path", default='../bert_data/cnndm')
@@ -325,6 +321,11 @@ if __name__ == '__main__':
     parser.add_argument("-train_from", default='')
     parser.add_argument("-report_rouge", type=str2bool, nargs='?',const=True,default=True)
     parser.add_argument("-block_trigram", type=str2bool, nargs='?', const=True, default=True)
+    return parser
+
+
+if __name__ == '__main__':
+    parser = get_arg_parser()
 
     args = parser.parse_args()
     args.gpu_ranks = [int(i) for i in args.gpu_ranks.split(',')]
@@ -334,7 +335,7 @@ if __name__ == '__main__':
     device = "cpu" if args.visible_gpus == '-1' else "cuda"
     device_id = 0 if device == "cuda" else -1
 
-    if(args.world_size>1):
+    if(args.world_size > 1):
         multi_main(args)
     elif (args.mode == 'train'):
         train(args, device_id)

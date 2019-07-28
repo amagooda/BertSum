@@ -1,11 +1,11 @@
 #encoding=utf-8
 
-
+from typing import Dict
 import argparse
 import time
 
-from others.logging import init_logger
-from prepro import data_builder
+from .others.logging import init_logger
+from .prepro import data_builder
 
 
 def do_format_to_lines(args):
